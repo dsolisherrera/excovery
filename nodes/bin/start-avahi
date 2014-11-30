@@ -1,0 +1,12 @@
+#!/bin/sh
+
+
+f=`dirname "$0"`
+. ${f}/config.inc
+
+
+
+CONFIG_FILE=${MY_SYS}/etc/avahi/avahi-daemon.conf
+
+sudo killall -q avahi-daemon
+sudo LD_LIBRARY_PATH=${MY_LIB} ${MY_SBIN}/avahi-daemon -D -f ${CONFIG_FILE}

@@ -1,0 +1,9 @@
+#!/bin/bash
+
+f=`dirname "$0"`
+. ${f}/config.inc
+
+
+sudo killall -q olsrd
+echo LD_LIBRARY_PATH=${MY_LIB} ${MY_SBIN}/olsrd -f ${MY_SYS}/etc/olsrd_mesh.conf 
+sudo LD_LIBRARY_PATH=${MY_LIB} ${MY_SBIN}/olsrd -f ${MY_SYS}/etc/olsrd_mesh.conf 

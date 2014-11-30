@@ -1,0 +1,23 @@
+#!/bin/bash
+
+IPTABLES="/usr/bin/sudo /sbin/iptables"
+CHAINS="INPUT FORWARD OUTPUT"
+# RULE="-p udp -d 224.0.0.251 --dport 5353 -j DROP"
+RULE="-p udp --dport 5353 -j DROP"
+
+for CHAIN in ${CHAINS}
+do
+	${IPTABLES} --append ${CHAIN} ${RULE}
+done
+
+echo "Dropping mDNS traffic on all interfaces ..."
+
+sleep ${1}
+
+for CHAIN in ${CHAINS}
+do
+	${IPTABLES} --delete ${CHAIN} ${RULE}
+done
+
+echo "Dropping of mDNS traffic finished."
+

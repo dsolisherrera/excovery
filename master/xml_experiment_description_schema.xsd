@@ -1,0 +1,156 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns="http://sd_experiments"
+           targetNamespace="http://sd_experiments"
+           elementFormDefault="qualified">
+
+<xs:element name="sd_experiment_description" >
+	<xs:complexType>
+		<xs:sequence>
+			<xs:element name="meta" type="xs:anyType" />
+			<xs:element name="abstractnodes" type="abstractnodes" />
+			<xs:element name="factorlist" type="factorlist" />
+			<xs:element name="processes" type="processes" />
+		</xs:sequence>
+	</xs:complexType>
+</xs:element>
+
+<xs:complexType name="abstractnodes">
+	<xs:sequence>
+		<xs:element name="abstractnode" type="abstractnode" maxOccurs="unbounded"/>
+	</xs:sequence>
+</xs:complexType>
+
+<xs:complexType name="abstractnode">
+	<xs:attribute name="id" type="xs:string" use="required"/>
+</xs:complexType>
+	
+<xs:complexType name="factorlist" >
+	<xs:sequence>
+		<xs:element name="factor" type="factor" maxOccurs="unbounded"/>
+		<xs:element name="replicationfactor" type="replicationfactor" maxOccurs="1" />
+	</xs:sequence>
+</xs:complexType>
+
+<xs:complexType name="factor">
+	<xs:sequence>
+		<xs:element name="levels" maxOccurs="1" />
+		<xs:element name="description" maxOccurs="1" type="xs:anyType"/>
+	</xs:sequence>
+	<xs:attribute name="id" type="xs:string" />
+	<xs:attribute name="type" type="xs:string" />
+	<xs:attribute name="usage" type="xs:string" />
+</xs:complexType>
+
+<xs:complexType name="replicationfactor">
+	<xs:simpleContent>
+		<xs:extension base="xs:integer">
+			<xs:attribute name="id" type="xs:string" />
+			<xs:attribute name="type" type="xs:string" />
+			<xs:attribute name="usage" type="xs:string" />
+		</xs:extension>
+	 </xs:simpleContent>
+</xs:complexType>
+
+<xs:complexType name="levels">
+	<xs:sequence>
+	</xs:sequence>
+</xs:complexType>
+
+<xs:complexType name="processes">
+	<xs:sequence>
+		<xs:element name="node_processes" type="node_processes" />
+		<xs:element name="env_process" type="env_process" />
+	</xs:sequence>
+	<xs:attribute name="max_run_time" type="xs:int" />
+</xs:complexType>
+
+<xs:complexType name="node_processes">
+	<xs:sequence>
+		<xs:element name="process_parameters" minOccurs="1" maxOccurs="1" type="process_parameters"/>
+		<xs:element name="actor" minOccurs="1" maxOccurs="unbounded" type="actor"/>
+	</xs:sequence>
+</xs:complexType>
+
+<xs:complexType name="process_parameters" >
+	<xs:sequence>
+		<xs:element name="actor_node_map" type="actor_node_map" />
+	</xs:sequence>
+</xs:complexType>
+
+<xs:complexType name="actor_node_map">
+	<xs:choice>
+		<xs:element name="factorref" type="factorref"/>
+		<xs:sequence>
+			<xs:element name="actormap" type="actormap" minOccurs="1"/>
+		</xs:sequence>
+	</xs:choice>
+</xs:complexType>
+
+<xs:complexType name="actormap" >
+	<xs:sequence>
+		<xs:element name="instance" minOccurs="1"/>
+	</xs:sequence>
+	<xs:attribute name="id" type="xs:string" />
+</xs:complexType>
+
+<xs:complexType name="instance">
+	<xs:simpleContent>
+		<xs:extension base="xs:integer">
+			<xs:attribute name="id" type="xs:string" />
+		</xs:extension>
+	</xs:simpleContent>
+</xs:complexType>
+
+<xs:complexType name="description">
+	<xs:simpleContent>
+		<xs:extension base="xs:string"></xs:extension>
+	</xs:simpleContent>
+</xs:complexType>
+
+<xs:complexType name="actor">
+	<xs:sequence>
+		<xs:element name="sd_actions" maxOccurs="1" />
+		<xs:element name="manipulation_actions" minOccurs="0" maxOccurs="1" />
+	</xs:sequence>
+	<xs:attribute name="id" type="xs:string" />
+	<xs:attribute name="name" type="xs:string" />
+</xs:complexType>
+
+<xs:complexType name="factorref" >
+	<xs:attribute name="id" type="xs:string" />
+</xs:complexType>
+
+<xs:complexType name="sd_actions" />
+<xs:complexType name="manipulation_actions" />
+<xs:complexType name="env_process">
+	<xs:sequence>
+		<xs:element name="description" type="description" />
+		<xs:element name="env_actions" type="env_actions" />
+	</xs:sequence>
+</xs:complexType>
+	
+<xs:complexType name="env_actions">
+	<xs:sequence>
+		<xs:element type="flow_control_actions" minOccurs="0" maxOccurs="unbounded" />
+	</xs:sequence>
+</xs:complexType>
+
+<xs:complexType name="flow_control_actions" />
+	<xs:choice></xs:choice>
+</xs:complexType>
+
+<!--  ACTIONS  //-->
+<xs:complexType name="traffic">
+	<xs:sequence>
+		<xs:element name="pairs" />
+		<xs:element name="bw" />
+		<xs:element name="choice" />
+	</xs:sequence>
+</xs:complexType>
+
+<xs:complexType name="wait_for_event">
+	<xs:sequence></xs:sequence>
+</xs:complexType>
+
+</xs:schema>

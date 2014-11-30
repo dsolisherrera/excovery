@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<topology version="1">
+    <net description="Small 3x3 grid network for YoMo testing" name="dasd">
+        <nodeTypes>
+            <nodeType name="meshrouter">
+                <interfaces>
+                    <interface name="wlan0" type="802.11bg"/>
+                </interfaces>
+            </nodeType>
+        </nodeTypes>
+        <nodes>
+            <node name="a1" type="meshrouter"/>
+            <node name="a2" type="meshrouter"/>
+            <node name="a3" type="meshrouter"/>
+            <node name="b1" type="meshrouter"/>
+            <node name="b2" type="meshrouter"/>
+            <node name="b3" type="meshrouter"/>
+            <node name="c1" type="meshrouter"/>
+            <node name="c2" type="meshrouter"/>
+            <node name="c3" type="meshrouter"/>
+        </nodes>
+        <links>
+            <link broadcast_loss="0.0" from_if="wlan0" from_node="a1" loss="0.1" to_if="wlan0" to_node="a2" uni="false"/>
+            <link broadcast_loss="0.0" from_if="wlan0" from_node="a1" loss="0.1" to_if="wlan0" to_node="b1" uni="false"/>
+            <link broadcast_loss="0.0" from_if="wlan0" from_node="a1" loss="0.1" to_if="wlan0" to_node="b2" uni="false"/>
+            <link broadcast_loss="0.0" from_if="wlan0" from_node="a2" loss="0.1" to_if="wlan0" to_node="a3" uni="false"/>
+            <link broadcast_loss="0.0" from_if="wlan0" from_node="a2" loss="0.1" to_if="wlan0" to_node="b2" uni="false"/>
+            <link broadcast_loss="0.0" from_if="wlan0" from_node="a2" loss="0.1" to_if="wlan0" to_node="b3" uni="false"/>
+            <link broadcast_loss="0.0" from_if="wlan0" from_node="a3" loss="0.1" to_if="wlan0" to_node="b3" uni="false"/>
+            <link broadcast_loss="0.0" from_if="wlan0" from_node="b1" loss="0.1" to_if="wlan0" to_node="b2" uni="false"/>
+            <link broadcast_loss="0.0" from_if="wlan0" from_node="b1" loss="0.1" to_if="wlan0" to_node="c1" uni="false"/>
+            <link broadcast_loss="0.0" from_if="wlan0" from_node="b1" loss="0.1" to_if="wlan0" to_node="c2" uni="false"/>
+            <link broadcast_loss="0.0" from_if="wlan0" from_node="b1" loss="0.1" to_if="wlan0" to_node="a2" uni="false"/>
+            <link broadcast_loss="0.0" from_if="wlan0" from_node="b2" loss="0.1" to_if="wlan0" to_node="b3" uni="false"/>
+            <link broadcast_loss="0.0" from_if="wlan0" from_node="b2" loss="0.1" to_if="wlan0" to_node="c2" uni="false"/>
+            <link broadcast_loss="0.0" from_if="wlan0" from_node="b2" loss="0.1" to_if="wlan0" to_node="c3" uni="false"/>
+            <link broadcast_loss="0.0" from_if="wlan0" from_node="b2" loss="0.1" to_if="wlan0" to_node="a3" uni="false"/>
+            <link broadcast_loss="0.0" from_if="wlan0" from_node="b3" loss="0.1" to_if="wlan0" to_node="c3" uni="false"/>
+            <link broadcast_loss="0.0" from_if="wlan0" from_node="c1" loss="0.1" to_if="wlan0" to_node="c2" uni="false"/>
+            <link broadcast_loss="0.0" from_if="wlan0" from_node="c1" loss="0.1" to_if="wlan0" to_node="b2" uni="false"/>
+            <link broadcast_loss="0.0" from_if="wlan0" from_node="c2" loss="0.1" to_if="wlan0" to_node="c3" uni="false"/>
+            <link broadcast_loss="0.0" from_if="wlan0" from_node="c2" loss="0.1" to_if="wlan0" to_node="b3" uni="false"/>
+        </links>
+    </net>
+</topology>
