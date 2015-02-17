@@ -61,7 +61,7 @@ def indent(elem, level=0):
 
 def sendmail(subject, msg):
 #	p = os.popen('mail andreas.dittrich@usi.ch -s "%s"' % subject, "w")
-	p = os.popen('mail solished@usi.ch -s "%s"' % subject, "w")
+	p = os.popen('mail solisd@usi.ch -s "%s"' % subject, "w")
 #	p = os.popen('mail andreas.dittrich@usi.ch -s "%s" -c manu.john.panicker@usi.ch' % subject, "w")
 	p.write("%s" % msg)
 	p.close()
@@ -100,11 +100,13 @@ def wait_for_threads_or_timeout(thread_list, run_timeout):
 		if run_timeout==0:
 			done=True
 		done_count = 0
+
 		for actor_thread in thread_list:
 			if actor_thread.is_alive()==False:
 				done_count = done_count+1
 		if done_count == len(thread_list):
 			done=True
+			
 	kill_threads = 1
 	for actor_thread in thread_list:
 		if actor_thread.is_alive()==True:
@@ -176,13 +178,13 @@ def parallel_exec( nodes, function, *args1):
 	for i in range(len(nodes)):
 		ret=queue_list[i].get()
 		if ret==-1:
-			print "returned -1"
+			print "parallel_exec returned -1"
 			failed_list.append(nodes[i])
 		if ret==-2:
-			print "returned -2"
+			print "parallel_exec returned -2"
 			raise Exception
 		if ret==-3:
-			print "gave up due to connect to env node"
+			print "parallel_exec: gave up due to connect to env node"
 	
 	return failed_list
 
@@ -416,12 +418,14 @@ class exp_actor_thread(threading.Thread):
 			self.exp_node.lock_node()
 			self.exp_node.fail_start_drop_sd()
 			self.exp_node.unlock_node()
+			
 		if action.action=="fault_drop_sd_stop":
 			if verbose:
 				print "%s: fault_drop_sd_stop" %s
 			self.exp_node.lock_node()
 			self.exp_node.fail_stop_drop_sd()
 			self.exp_node.unlock_node()
+			
 		if action.action=="event_flag":
 			if verbose:
 				print "%s: event_flag"
@@ -429,13 +433,13 @@ class exp_actor_thread(threading.Thread):
 			flag =action.parameter_list["value"].data  
 			eh.inject_event("local","","%s"%flag,"")
 
-                if action.action=="get_olsr":
-                        print "%s: getting_olsr" %s
+		if action.action=="get_olsr":
+			if verbose:
+				print "%s: get_olsr" %s
 			self.exp_node.lock_node()
-                        self.exp_node.get_olsr()
+			self.exp_node.get_olsr()
 			self.exp_node.unlock_node()
 									
-		
 		
 	def run(self):
 		'''
@@ -450,24 +454,27 @@ class exp_actor_thread(threading.Thread):
 			else:
 				print "Kill_threads flag is active!",kill_threads
 
-def do_traffic_thread(queue, start_stop, node, target, bw):
+def do_traffic_thread(queue, command, node, target, bw):
 	r = 0
 	try:
 		node.lock_node()
-		if start_stop=="start":
+		if command=="start":
 			r = node.traffic_start(target,bw)
-		if start_stop=="stop":
-			r = node.traffic_stop_all()
+		if command=="update":
+			r = node.traffic_update(target,bw)
+		if command=="stop":
+			#r = node.traffic_stop_all()
+			r = node.traffic_stop(target)
 			
 	except socket.error:
-		print "Socket error while trying to exec %s on node %s" %(start_stop, str(node))
+		print "Socket error while trying to exec %s on node %s" %(command, str(node))
 		if node.type=="env":
 			print "Just an evn node, trying to continue..."
-			error_log("Socket error while trying to exec %s on node %s"%(start_stop,str(node)))
+			error_log("Socket error while trying to exec %s on node %s"%(command,str(node)))
 			r = -3
 		else:
 			print "Its an acting node, giving up experiment"
-			error_log("Critical:Socket error while trying to exec %s on node ",node %(start_stop))
+			error_log("Critical:Socket error while trying to exec %s on node ",node %(command))
 			r = -2
 	except IOError:
 		print "Socket IO error, issue retry"
@@ -484,15 +491,19 @@ class exp_env_thread(threading.Thread):
 
 	factor_value_run = None;
 
-	def __init__(self, exp):
-		self.exp = exp
+	def __init__(self, exp_desc,env_input_queue,env_output_queue,load_pairs= [], bw_changed=False):
+		self.exp_desc = exp_desc
 		self.exp_wait_marker_time = 0
 		self.rand = random.Random()
-		self.load_pairs = []
+		self.load_pairs = load_pairs
+		self.env_input_queue = env_input_queue
+		self.env_output_queue = env_output_queue
+		self.bw_changed = bw_changed
+		#self.current_bw = exp_desc.get_current_factor_value_by_id('fact_bw')
 		threading.Thread.__init__(self, name="env")
 
-	
-	def parallel_traffic( self, start_stop, RPCnodelist, target_list, bw):
+
+	def parallel_traffic( self, command, RPCnodelist, target_list, bw):
 		'''
 		executes requests in parallel and waits for all to return
 		returns a list of nodes, that gave a negative result
@@ -508,7 +519,7 @@ class exp_env_thread(threading.Thread):
 		
 		for i in range(len(RPCnodelist)):
 			queue_list.append(Queue.Queue())
-			th = threading.Thread( target=do_traffic_thread, kwargs={'queue':queue_list[i], 'node':RPCnodelist[i],'target':target_list[i],'start_stop':start_stop,'bw':bw} )
+			th = threading.Thread( target=do_traffic_thread, kwargs={'queue':queue_list[i], 'node':RPCnodelist[i],'target':target_list[i],'command':command,'bw':bw} )
 			thread_list.append(th)
 			#time.sleep(0.15)
 			th.daemon = True   
@@ -527,18 +538,30 @@ class exp_env_thread(threading.Thread):
 	
 		return failed_list
 
-	def traffic(self, start_stop, exp_action=0):
+	def traffic(self, command, exp_action=0):
 		global nodeContainer
-		
+		s = "ENV_Thread "
 		#TODO choice
 		if len(nodeContainer.all_env())<2:
 			return
 		
 		random_seed = None
-		if (start_stop=="start"):
+		
+		if (command=="stop"):
+			tmp_nodes = []
+
+			for pair in self.load_pairs:
+				tmp_nodes.append(pair[0])
+				tmp_nodes.append(pair[1])
+
+			parallel_exec(tmp_nodes, "traffic_stop_all")
+		
+		else:
 			bw = 0
 			random_pairs = 0
 			random_switch_amount = 0
+			removed_pairs = []
+			added_pairs = []
 			for (name, exp_param) in exp_action.parameter_list.items():
 				if name=="random_pairs":
 					if exp_param.type=="fix":
@@ -567,14 +590,15 @@ class exp_env_thread(threading.Thread):
 						bw = exp.get_current_factor_value_by_id(exp_param.data)
 
 			# get pseudo randomly assigned pairs
-			print "getting %d pairs, bw=%d" % (random_pairs,bw)
+			print "%s: getting %d pairs, bw=%d" % (s,random_pairs,bw)
 			if random_pairs==0:
 				return
-			
-			if random_seed==None:
-				self.load_pairs = nodeContainer.get_random_env_pairs(random_pairs)
-			else:
-				self.load_pairs = nodeContainer.get_random_env_pairs(random_pairs, random_seed)
+			if (command=="start"):
+				if random_seed==None:
+					self.load_pairs = nodeContainer.get_random_env_pairs(random_pairs)
+				else:
+					self.load_pairs = nodeContainer.get_random_env_pairs(random_pairs, random_seed)
+					
 			if random_switch_amount>0:
 				if random_switch_seed!=None:
 					self.rand.seed(random_switch_seed)
@@ -583,19 +607,22 @@ class exp_env_thread(threading.Thread):
 					# Choose random pair from current loadnodes
 					currpair = self.rand.randrange(0,len(self.load_pairs))
 					# Remove chosen pair from current loadnodes
+					removed_pairs.append(self.load_pairs[currpair])
 					del self.load_pairs[currpair]
+
 					# Now pick a new random pair
 					env_nodes = nodeContainer.all_env()
-					#env_nodes = nodeContainer.all_env()
+
 					currlist = list(range(len(env_nodes)))
 					newpartner1 = currlist[self.rand.randrange(0, len(currlist))]
 					currlist.remove(newpartner1)
 					newpartner2 = currlist[self.rand.randrange(0, len(currlist))]
-					newpair = [env_nodes[newpartner1],env_nodes [newpartner2]]
+					newpair = [env_nodes[newpartner1],env_nodes[newpartner2]]
 			
 					self.load_pairs.append(newpair)
-					print "ENV: Replaced iperf pair %s with %s." % ( currpair, newpair)
-		  
+					added_pairs.append(newpair)
+					print "%s: Replaced iperf pair %s with %s." % (s,removed_pairs[-1], newpair)
+
 			# for each pair, start the clients
 			tmp_nodes = []
 			tmp_targets = []
@@ -605,36 +632,46 @@ class exp_env_thread(threading.Thread):
 				
 				tmp_nodes.append(pair[1])
 				tmp_targets.append(pair[0].name)
+
+			if command == "start":
+				self.parallel_traffic("start",tmp_nodes,tmp_targets,bw)
 				
-			self.parallel_traffic("start",tmp_nodes,tmp_targets,bw)
-#				node1=pair[0]
-#				node2=pair[1]
-#				
-#				node1.lock_node()
-#				node1.traffic_start(pair[1].name, bw)
-#				node1.unlock_node()
-#				node2.lock_node()
-#				node2.traffic_start(pair[0].name, bw)
-#				node2.unlock_node()
-		else:
-			tmp_nodes = []
-			tmp_targets = []
-			for pair in self.load_pairs:
-				tmp_nodes.append(pair[0])
-				tmp_targets.append(pair[1].name)
-				
-				tmp_nodes.append(pair[1])
-				tmp_targets.append(pair[0].name)
-#				node0=pair[0]
-#				node1=pair[1]
-#				node0.lock_node()
-#				node0.traffic_stop_all()
-#				node0.unlock_node()
-#				node1.lock_node()
-#				node1.traffic_stop_all()
-#				node1.unlock_node()
-			#self.parallel_traffic("stop",tmp_nodes,tmp_targets,0)
-			parallel_exec(tmp_nodes, "traffic_stop_all")
+			else:
+				#if bw  == self.current_bw:
+				if self.bw_changed:
+					print "%s: Change in BW, stopping all traffic and restarting with new value." %s
+					
+					#self.current_bw = bw
+					parallel_exec(tmp_nodes, "traffic_stop_all")
+					self.parallel_traffic("start",tmp_nodes,tmp_targets,bw)
+					#self.parallel_traffic("update",tmp_nodes,tmp_targets,bw)
+				else:
+					'''
+					Since the load is the same only modify new pairs
+					'''
+					print "%s: Updating only new load pairs." %s
+					# stop previous pairs, and start the new ones o
+					stop_nodes = []
+					stop_targets = []
+					start_nodes = []
+					start_targets = []
+					for pair in removed_pairs:
+						stop_nodes.append(pair[0])
+						stop_targets.append(pair[1].name)
+                        
+						stop_nodes.append(pair[1])
+						stop_targets.append(pair[0].name)
+					for pair in added_pairs:
+						start_nodes.append(pair[0])
+						start_targets.append(pair[1].name)
+                        
+						start_nodes.append(pair[1])
+						start_targets.append(pair[0].name)
+					self.parallel_traffic("stop",stop_nodes,stop_targets,bw)
+					self.parallel_traffic("start",start_nodes,start_targets,bw)
+					
+			self.env_output_queue.put(self.load_pairs)				
+			
 	def drop_sd_start(self):
 		global nodeContainer
 		all = nodeContainer.all()
@@ -671,6 +708,10 @@ class exp_env_thread(threading.Thread):
 			print "%s: traffic_start" %s
 			self.traffic("start", exp_action)
 			
+		if exp_action.action=="env_traffic_update":
+			print "%s: traffic_update" %s
+			self.traffic("update", exp_action)	
+			
 		if exp_action.action=="env_traffic_stop":
 			self.traffic("stop")
 		
@@ -702,16 +743,31 @@ class exp_env_thread(threading.Thread):
 			eh.inject_event("local","","%s"%flag,"")
 				 
 		if exp_action.action=="get_olsr":
-			print "%s: getting_olsr" %s
-			self.get_olsr()	 
+			if verbose:
+				print "%s: get_olsr" %s
+			self.get_olsr()
 			
 	def run(self):
 		'''
 		'''
 		global kill_threads
-		for action in self.exp.env_process.action_list:
-			if kill_threads!=1:
-				self.exp_execute_action(action)
+		
+		command = self.env_input_queue.get(True)
+		print "ENV_Thread: Doing command %s" %(command)
+		if command == "global":
+			for action in self.exp_desc.global_process.action_list:
+				if kill_threads!=1:
+					self.exp_execute_action(action)
+			
+		elif command == "run":
+			for action in self.exp_desc.env_process.action_list:
+				if kill_threads!=1:
+					self.exp_execute_action(action)
+			
+		else:
+			print "Error: Invalid command recieved."
+			exit()
+
 
 def _create_actor_threads(exp, map):
 	global nodeContainer
@@ -740,18 +796,18 @@ def build_full_run_matrix(full_run_matrix,run_matrix_done):
 	
 	#print full_run_matrix;
 	found_flag =False;
-	
-
+	new_run_matrix = []
+	NOP = ['N','N','N','N']
 		#[A]Substract the two matrices and obtain a new_run_matrix 
 			#The new_run_matrix contains ['N','N','N','N'] (NOP) in the places of the runs already done before while normal values (values of the full_matrix which is not done yet)
 			#in the places that needs to be done this is done to preserve the same indexing system of the run_number that will be 
 			#used later.
 	
 	#print step for debugging		
-	if verbose:
-		print "#########Full Matrix##################"
-		for run_item_full_run_matrix in full_run_matrix:
-			print run_item_full_run_matrix;
+	#~ if verbose:
+		#~ print "#########Full Matrix##################"
+		#~ for run_item_full_run_matrix in full_run_matrix:
+			#~ print run_item_full_run_matrix;
 
 
 	for run_item_full_run_matrix in full_run_matrix:
@@ -768,19 +824,19 @@ def build_full_run_matrix(full_run_matrix,run_matrix_done):
 			found_flag = False;
 
 	#print step for debugging		
-	if verbose:
-		print "#########To be done##################"
-		for run_item_new_run_matrix in new_run_matrix:
-			print run_item_new_run_matrix;
+	#~ if verbose:
+		#~ print "#########To be done##################"
+		#~ for run_item_new_run_matrix in new_run_matrix:
+			#~ print run_item_new_run_matrix;
 	
 	
 	return new_run_matrix;
 	
 	
 	
-def sort_xml_file():
+def sort_xml_file(xml_run_file):
 	
-	tree = ET.parse('run_file.xml');
+	tree = ET.parse(xml_run_file);
 	root = tree.getroot();
 	
 	#Fetch all the nodes and the
@@ -791,17 +847,14 @@ def sort_xml_file():
 	runs_nodes.sort(key=lambda run_node: int(run_node.get('run_matrix_value')));
 	
 	
-	
 	#remove what was in the xml file
-	f = open('run_file.xml', 'r+')
+	f = open(xml_run_file, 'r+')
 	f.truncate();
 	f.close();
 	
 	
-	
 	#Write to the xml file
-	run_file_f = open("run_file.xml","w+"); #Open the file for write and overwrite 
-	
+	run_file_f = open(xml_run_file,"w+"); #Open the file for write and overwrite 
 	
 	s= '<run_list>\n';
 	run_file_f.write(s);
@@ -810,163 +863,149 @@ def sort_xml_file():
 	run_file_f.close();
 	
 	
-	
-	tree = ET.parse('run_file.xml');
+	tree = ET.parse(xml_run_file);
 	root = tree.getroot();
 	 
 	for rundone in runs_nodes:
-	
 	  run_done=ET.Element("run_done",run_matrix_value = str(rundone.get('run_matrix_value')),value=str(rundone.get('value')));
 	  root.append(run_done);
-	  #tree.write('run_file.xml');
 	  
 	  for factor in rundone.findall('factor'):
-	
 	    run_factor=ET.Element("factor",id=str(factor.get('id')),index = str(factor.get('index')),size=str(factor.get('size')),value=str(factor.get('value')));
 	    run_done.append(run_factor);
-	    #tree.write('run_file.xml');
 		
-	tree.write('run_file.xml');
+	tree.write(xml_run_file);
 	indent(root);
-	tree.write('run_file.xml');
+	tree.write(xml_run_file);
 
-def Delete_last_runs(delete_last_runs):
+def delete_last_runs(xml_run_file):
 	
 	##################################################################
 	#Delete routine :delete the last three runs 
 	##################################################################
-
-
-	#check if delete option is specified 
 	
+	print "Deleting previous runs"
+		#[1]remove the last three runs from the xml.
+	tree = ET.parse(xml_run_file);
+	root = tree.getroot();
+	max_run  =0;
+	curr_run =0;
+	
+	#instantiation to use only the methods
+	exp_run = experiment_description(options.experiment_description);
+			#[A] find the max. run
+	for run_done in root.findall('run_done'):
+		curr_run = int(run_done.get('value'))
+		if curr_run > max_run:
+			max_run =curr_run ;
 
-	if(delete_last_runs == True):
-		
-		print "Deleting previous runs"
-			#[1]remove the last three runs from the xml.
-		tree = ET.parse('run_file.xml');
-		root = tree.getroot();
-		max_run  =0;
-		curr_run =0;
-		
-		#instantiation to use only the methods
-		exp_run = experiment_description(options.experiment_description);
-				#[A] find the max. run
+	##print step for debugging
+	if verbose:
+		print "Max. run found";
+		print max_run
+	
+	if(max_run == 0):
+		print "No items to delete"
+			#[B] find & delete runs above max_run - 3 from the xml file 
+					#[I]case the total number of runs less that 4
+	elif(max_run < 4):
 		for run_done in root.findall('run_done'):
-		 	curr_run = int(run_done.get('value'))
-			if curr_run > max_run:
-				max_run =curr_run ;
+			run_time_value = int(run_done.get('value'))
+			run_matrix_value = int(run_done.get('run_matrix_value'));
+			#delete from the xml file
+			root.remove(run_done);
+			
+			#delete from the Masterdir
+			Master_dir_to_be_deleted  = "%s/%s" % (experiment_data.get_current_experiment_dir(),exp_run.factor_level_matrix.make_run_identifier(exp_run.run_matrix[run_matrix_value]));
+			#delete from the node dir
+			Node_dir_to_be_deleted = "%s/%s/%s/%s" % (experiment_root_nodes, results_dir_name_nodes,exp_run.experiment_name,exp_run.factor_level_matrix.make_run_identifier(exp_run.run_matrix[run_matrix_value])) ;
+			try:
+				shutil.rmtree(Master_dir_to_be_deleted)
+			except:
+				print "Error: while deleting %s" %(Master_dir_to_be_deleted)
+			try:
+				shutil.rmtree(Node_dir_to_be_deleted)
+			except:
+				print "Error: while deleting %s" %(Node_dir_to_be_deleted)
+			
 	
-		##print step for debugging
-		if verbose:
-			print "Max. run found";
-			print max_run
-		
-		if(max_run == 0):
-			print "No items to delete"
-				#[B] find & delete runs above max_run - 3 from the xml file 
-						#[I]case the total number of runs less that 4
-		elif(max_run < 4):
-			for run_done in root.findall('run_done'):
-		 		run_time_value = int(run_done.get('value'))
-		 		run_matrix_value = int(run_done.get('run_matrix_value'));
-		 		#delete from the xml file
-				root.remove(run_done);
-				
-				#delete from the Masterdir
-				Master_dir_to_be_deleted  = "%s/%s" % (experiment_data.get_current_experiment_dir(),exp_run.factor_level_matrix.make_run_identifier(exp_run.run_matrix[run_matrix_value]));
-				#delete from the node dir
-				Node_dir_to_be_deleted = "%s/%s/%s/%s" % (experiment_root_nodes, results_dir_name_nodes,exp_run.experiment_name,exp_run.factor_level_matrix.make_run_identifier(exp_run.run_matrix[run_matrix_value])) ;
-				#shutil.rmtree(Node_dir_to_be_deleted);    
-				#shutil.rmtree(Master_dir_to_be_deleted); 
-				print Node_dir_to_be_deleted;
-				print Master_dir_to_be_deleted;
-				
-		
-		else:
-	
-			for run_done in root.findall('run_done'):
-	
-				curr_run = int(run_done.get('value'))
-				run_matrix_value = int(run_done.get('run_matrix_value'));
-	
-				if(curr_run > max_run -3):
-					
-					#delete this run the xml file
-					root.remove(run_done);
-						
-					Master_dir_to_be_deleted  = "%s/%s" % (experiment_data.get_current_experiment_dir(),exp_run.factor_level_matrix.make_run_identifier(exp_run.run_matrix[run_matrix_value]))
-					Node_dir_to_be_deleted = "%s/%s/%s/%s" % (experiment_root_nodes, results_dir_name_nodes,exp_run.experiment_name,exp_run.factor_level_matrix.make_run_identifier(exp_run.run_matrix[run_matrix_value])) ;
-						
-					print Master_dir_to_be_deleted;
-					print Node_dir_to_be_deleted;
-					#delete Master and Nodes dir
-					#shutil.rmtree(Master_dir_to_be_deleted); 	 	     
-					#shutil.rmtree(Node_dir_to_be_deleted);     
-					#i =i +1;
-					
-	
-		tree.write('run_file.xml');
-
 	else:
-		print "Run without deleting previous runs";
+
+		for run_done in root.findall('run_done'):
+
+			curr_run = int(run_done.get('value'))
+			run_matrix_value = int(run_done.get('run_matrix_value'));
+
+			if(curr_run > max_run - 20):
+				
+				#delete this run the xml file
+				root.remove(run_done);
+					
+				Master_dir_to_be_deleted  = "%s/%s" % (experiment_data.get_current_experiment_dir(),exp_run.factor_level_matrix.make_run_identifier(exp_run.run_matrix[run_matrix_value]))
+				Node_dir_to_be_deleted = "%s/%s/%s/%s" % (experiment_root_nodes, results_dir_name_nodes,exp_run.experiment_name,exp_run.factor_level_matrix.make_run_identifier(exp_run.run_matrix[run_matrix_value])) ;
+					
+				#delete Master and Nodes dir
+				try:
+					shutil.rmtree(Master_dir_to_be_deleted)
+				except:
+					print "Error: while deleting %s" %(Master_dir_to_be_deleted)
+				try:
+					shutil.rmtree(Node_dir_to_be_deleted)
+				except:
+					print "Error: while deleting %s" %(Node_dir_to_be_deleted)
+				
+
+	tree.write(xml_run_file);
+
+
 	
 	
-def adjust_value_attribute():
+def adjust_value_attribute(xml_run_file):
 	
-	tree = ET.parse('run_file.xml');
+	tree = ET.parse(xml_run_file);
 	root = tree.getroot();
 
 	#Open the xml file and adjust the value attribute 
 	new_actual_run_number =0;
 
-
 	for run_done in root.findall('run_done'):
 		run_done.set('value',str(new_actual_run_number));
 		new_actual_run_number = new_actual_run_number+1;
-	tree.write('run_file.xml');	
+	tree.write(xml_run_file);	
 
-def build_run_matrix_done(run_matrix_done):
+def build_run_matrix_done(run_file,run_matrix_done):
 	
+	old_run_item    = []
 	
-	old_run_item    =None ;
-	old_run_item    =[]; 
-	tree = ET.parse('run_file.xml');
-	root = tree.getroot();
-	runs_done = root.findall('run_done');
+	tree = ET.parse(run_file)
+	root = tree.getroot()
+	runs_done = root.findall('run_done')
 	
 	for run_done in runs_done : 	
 		for factor in run_done.findall('factor'):
-			factor_id    =factor.get('id');
-			factor_index =factor.get('index');
-			factor_value =int(factor.get('value'));
-			old_run_item.append(factor_value);
+			factor_id    =factor.get('id')
+			factor_index =factor.get('index')
+			factor_value =int(factor.get('value'))
+			old_run_item.append(factor_value)
+			
+		run_matrix_done.append(old_run_item)
 
-			
-			#for i in range(0,len(factor_list_new)):
-			#	new_run_item.insert(i,factor_value);
-				
-				#[c]add to the new run matrix an item indicates the run done.
-			
-		run_matrix_done.append(old_run_item);
-				#print old_run_item;
-		old_run_item =[];
+		old_run_item =[]
 				
 
-	if verbose:
-		print "###########Done runs######################"
-		for run_item_run_matrix_done in run_matrix_done:
-			print run_item_run_matrix_done;
+	#~ if verbose:
+		#~ print "###########Done runs######################"
+		#~ for run_item_run_matrix_done in run_matrix_done:
+			#~ print run_item_run_matrix_done
 	
-	
-	return run_matrix_done;
+	return run_matrix_done
 
-def run_experiment_new(exp,new_run_matrix):
+def run_experiment(exp,new_run_matrix,xml_run_file):
 	global nodeContainer
 	global eh
 	global kill_threads
 	global forward
-	print "\n======= Starting experiment runs ======\n"
+
 	
 
 	NOP_RUN =['N','N','N','N'];
@@ -976,11 +1015,9 @@ def run_experiment_new(exp,new_run_matrix):
 	factor_value_run =[];
 	runs_positions_new_run_matrix =[];
 
-	tree = ET.parse('run_file.xml');
+	tree = ET.parse(xml_run_file);
 	root = tree.getroot();
 
-
-	
 
 	#Process the xml file to adjust it with respect to time (actual_run_number)
 		#compute how many runs already done and to add the value of the run based on the latest run.
@@ -990,53 +1027,66 @@ def run_experiment_new(exp,new_run_matrix):
 			runs_positions_new_run_matrix.append(run_number);
 
 
-
-	
 	#compute how many runs already done and to add the value of the run based on the latest run.
 	for run_number in range(0, len(new_run_matrix)):
 		if (new_run_matrix[run_number] == NOP_RUN):
 			actual_run_number = actual_run_number+1;
 	
-
-	
 	#print runs_positions_new_run_matrix;
 		
-	if verbose:
-		for i in range(0,len(runs_positions_new_run_matrix)):
-			print runs_positions_new_run_matrix [i];
+	#if verbose:
+	#	for i in range(0,len(runs_positions_new_run_matrix)):
+	#		print runs_positions_new_run_matrix [i];
 
 	#Adjust the value of the run_matrix_value
 	i =0;
 	for run_done in root.findall('run_done'):
 		run_done.set('run_matrix_value',str(runs_positions_new_run_matrix[i]))
 		i = i+1;
-	tree.write('run_file.xml');	
-	
+	tree.write(xml_run_file);	
 	
 	
 		#loop over run sequence, resuming automatically with forward variable
 	for run_number in range(0, len(new_run_matrix)):
 		
 		if (new_run_matrix[run_number] == NOP_RUN):
-			if verbose:
-				print "Run number %d already_done" %run_number;
+			#if verbose:
+			#	print "Run number %d already_done" %run_number;
 			
 			run_done.set('run_matrix_value',str(run_number));
-			if verbose:
-				print run_done.get('run_matrix_value');
+			#if verbose:
+			#	print run_done.get('run_matrix_value');
 	
 	
-	tree.write('run_file.xml');	
-	
+	tree.write(xml_run_file);
+		
+	#Start environmental thread
+	exp.set_run_number(0) #We need some information from the experiments that is run dependant in the env thread, get it for run zero to start with.
+	current_bw = exp.get_current_factor_value_by_id('fact_bw')
+	#env_nodes   = nodeContainer.all_env()
+	#parallel_run_init(env_nodes, exp.get_current_run_name(), "env")
+    
+	load_pairs = []
+	env_input_queue = Queue.Queue()
+	env_output_queue = Queue.Queue()
+	env_thread = exp_env_thread(exp,env_input_queue,env_output_queue,load_pairs)
+    
+	env_input_queue.put("global")
+	env_thread.start()
+	env_thread.join()
+	load_pairs = env_output_queue.get(True)
+	print "------------------"
+	print load_pairs
 	
 			
 	#loop over run sequence, resuming automatically with forward variable
+	print "\n======= Starting experiment runs ======\n"
+	sys.stdout.flush()
 	for run_number in range(0, len(new_run_matrix)):
-		
+		sys.stdout.flush()
 		if (new_run_matrix[run_number] == NOP_RUN):
 			if verbose:
 				print "Run number %d already_done" %run_number;
-			
 			
 		else:
 			###################################################################
@@ -1051,8 +1101,8 @@ def run_experiment_new(exp,new_run_matrix):
 				#get the factor combination :
 			for factor in exp_run.factor_list:
 				factor_value_run.append(exp_run.get_current_factor_level_by_id(factor.id));
-				if verbose:
-					print factor_value_run ;
+				#if verbose:
+				#	print factor_value_run ;
 			#[2]Write this combination to the xml file
 				#Build the xml file
 			#build_xml_file(exp_run);
@@ -1069,35 +1119,28 @@ def run_experiment_new(exp,new_run_matrix):
 				run_done.append(run_factor);
 			
 	
-			
 			indent(root);	
 			tree.write('run_file.xml');
-	
 	
 			actual_run_number = actual_run_number+1;
 	
 			###################################################################
 			#Done update the xml
 			###################################################################
-	
-	
-	
+
+
+
 			###### SETUP LEVELS OF ALL FACTORS FOR THIS RUN ########
 			exp.set_run_number(run_number)
 			nodeContainer.update_actor_nodes()
 			run_definition = exp.get_run_identifier()
 			print "run number %d starting with factor combination %s" %(run_number,run_definition)
-	
-			# this used to allow continuation, not needed anymore
-	# 		if forward!=0:
-	# 			if run_number<forward or forward==exp.get_run_count()-1:
-	# 				continue
+			
 			
 			# clear log so the list won't get too long and the list object is blocked so long,
 			# that remote clients time-out 
 			eh.clear_log()
 			kill_threads = 0
-			
 			try:
 				###### PREPARE NETWORK FOR RUN ################################
 				parallel_exec(nodeContainer.all(),"fail_start_drop_sd" )
@@ -1110,10 +1153,10 @@ def run_experiment_new(exp,new_run_matrix):
 				finally:
 					parallel_exec(nodeContainer.all(), "fail_stop_drop_sd" )
 				#################################################################
-				
+
 				actor_nodes = nodeContainer.all_actors()
 				env_nodes   = nodeContainer.all_env()
-				
+
 				# init all
 				try:
 					parallel_run_init(actor_nodes,exp.get_current_run_name(), "actor")
@@ -1123,26 +1166,42 @@ def run_experiment_new(exp,new_run_matrix):
 				parallel_run_init(env_nodes, exp.get_current_run_name(), "env")
 	
 				map = exp.get_actor_node_map()
-			
-				print "Creating Threads"
+				
+				new_bw = exp.get_current_factor_value_by_id('fact_bw')
+				changed_bw = not (new_bw == current_bw)
+				print "Changed data rate: " + str(changed_bw)
+				if (changed_bw):
+					current_bw = new_bw
+				
+				print "Creating Actor Threads"
 				actor_list = _create_actor_threads(exp, map)			
-				env_thread = exp_env_thread( exp)   
+				env_thread = exp_env_thread(exp,env_input_queue,env_output_queue,load_pairs,changed_bw) 
 				actor_list.append(env_thread)
+				
+				print "Sending update message to Env Thread"
+				#if env_thread.is_alive()==False:
+				#	print "Env Thread is dead"
+				env_input_queue.put("run")
 	
 				print "Running %d threads" %len(actor_list)
 				# start threads
 				for t in actor_list:
-					t.start()				 
+					t.start()			
 				
 				wait_for_threads_or_timeout(actor_list,exp.max_run_time)
 				for t in actor_list:
 					t.join()   
+					
+				load_pairs = env_output_queue.get(True)
+				print "------------------"
+				print load_pairs
 				
 				print "all threads finished"
 				parallel_exec(actor_nodes, "run_exit")
 				parallel_exec(env_nodes, "run_exit")
 			except:
-				raise	
+				raise
+
 			actor_list =[]
 
 
@@ -1334,6 +1393,10 @@ class NodeContainer:
 		print "NC: %d nodes in file." % (len(self.node_list))
 
 	def get_random_env_pairs(self, numberofpairs, random_seed=0):
+		'''
+		Here we use truly random pairs, this means that is possible to have multiple
+		instances of the same pair, or nodes participating in multiple pairs.
+		'''
 		if random_seed!=0:
 			self.rand.seed(random_seed)
 		if len(self.node_list) >= 2:
@@ -1345,7 +1408,7 @@ class NodeContainer:
 				partner1 = currlist[self.rand.randrange(0, len(currlist))]
 				currlist.remove(partner1)
 				partner2 = currlist[self.rand.randrange(0, len(currlist))]
-				partners.append( [env_nodes[partner1],env_nodes[partner2]])   
+				partners.append( [env_nodes[partner1],env_nodes[partner2]]) 
 			return partners
 		else:
 			print "NC: Not enough nodes to pick from."
@@ -1448,9 +1511,8 @@ def measure_time_diff_via_communication_channel():
 ############################################################
 #build_xml_file function
 ############################################################
-############################################################
 
-def build_xml_file(experiment_xml_file):
+def build_xml_file(exp_desc,xml_run_file):
 
 	##############XML Layout##############################
 	#Write data to the xml file (run_exp_encode)
@@ -1473,15 +1535,13 @@ def build_xml_file(experiment_xml_file):
 	#</run_list>
 	#########################################################
 
-	xml_run_file='run_file.xml';#create a new file only if it doesn't exists
 	
 	if(os.path.exists(xml_run_file) == False): #create a new file only if it doesn't exists
 		print "creating a new run_file.xml"
 
 		#Create a new experiment_description just to use its methods
-		exp_run = experiment_description(experiment_xml_file);
 		Exp_Enc_f = open("run_file.xml","w+"); #Open the file for write and overwrite 
-		s='<!-- Number of factor = %d -->\n'%len(exp_run.factor_list);
+		s='<!-- Number of factor = %d -->\n'%len(exp_desc.factor_list);
 		Exp_Enc_f.write(s);
 		s= '<run_list>\n';
 		Exp_Enc_f.write(s);
@@ -1492,7 +1552,6 @@ def build_xml_file(experiment_xml_file):
 	else:
 		#The file already exists
 		print "The file run_file.xml already exists"	
-
 
 
 if __name__ == '__main__':
@@ -1509,10 +1568,9 @@ if __name__ == '__main__':
 	eh_verbose = False
 	simulate = False
 	error_log_lock = threading.Lock()
-	
+
 	kill_threads = 0
-	
-	
+
 	# specifics
 	capture_interface      = "bmf0"
 	experiment_root        = os.path.expanduser("~")
@@ -1520,39 +1578,38 @@ if __name__ == '__main__':
 	# Should be synchronized with Node_ManagerRPC.py on nodes
 	results_dir_name_nodes = "results"
 	forward  = 0
-	forwardelement = "run_0_0_0_0";
+	forwardelement = "run_0_0_0_0"
 
-	factor_level_matrix  = None ;
-	factor_weight_matrix = None ;
-	fact_value_run_matrix_Master= None ;
+	factor_level_matrix  = None 
+	factor_weight_matrix = None 
+	fact_value_run_matrix_Master= None 
 
-	old_run_item 	= None;
-	new_run_item 	= None;
-	run_matrix_done = None;
-	full_run_matrix = None;
-	new_run_matrix  = None;
-	NOP 			= None;
+	old_run_item 	= None
+	new_run_item 	= None
+	run_matrix_done = None
+	full_run_matrix = None
+	new_run_matrix  = None
+	NOP 			= None
 
-	delete_last_runs =False;
 
-	factor_level_matrix  = []   ;
-	factor_weight_matrix = []   ;
+	factor_level_matrix  = []
+	factor_weight_matrix = []
  	
-	fact_value_run_matrix_Master  = []   ;
-	fact_value_run_matrix_Nodes   = []   ;
-	max_current_run_count_Master  = 0  	 ;
-	max_current_run_count_Nodes   = 0 	 ;
-	current_run_count_Master 	  = 0    ;
-	current_run_count_Nodes 	  = 0    ;
+	fact_value_run_matrix_Master  = []
+	fact_value_run_matrix_Nodes   = []
+	max_current_run_count_Master  = 0
+	max_current_run_count_Nodes   = 0
+	current_run_count_Master 	  = 0
+	current_run_count_Nodes 	  = 0
 
-	full_run_matrix =[];
+	full_run_matrix =[]
 	
-	new_run_item    =[];
-	run_matrix_done =[];
-	new_run_matrix  =[];
-	NOP 		    =['N','N','N','N'];
+	new_run_item    =[]
+	run_matrix_done =[]
+	new_run_matrix  =[]
+	NOP 		    =['N','N','N','N']
 
-	miss_match_flag = False;
+	miss_match_flag = False
 
 
 
@@ -1564,45 +1621,31 @@ if __name__ == '__main__':
 		version='%s 0.0.4' % os.path.basename(sys.argv[0]),
 	)
 
-	parser.add_option('-f', metavar='experiment_description', dest='experiment_description', help='file with description')
-	parser.add_option('-v', action='store_true', dest='verbose', help='give this option to produce more output')
-	parser.add_option('--ve', action='store_true', dest='eh_verbose', help='activate verbosity on the event handler (EH)')
-# 	parser.add_option('--forward', metavar='forward', dest='forward', help='lets the run be forwarded (to continue at a previous state)')
-	parser.add_option('--simulate', action='store_true', dest='simulate', help='simulates a run without calling RPCs and without waiting')
-	
-
-	parser.add_option('--del', action='store_true',default=False, dest='delete_last_runs', help='Start running without deleting the latest three runs');
+	parser.add_option('-f'			, metavar='experiment description', dest='experiment_description',					help='file with description')
+	parser.add_option('--rf' 		, metavar='xml run file', 			type = "string",	dest='xml_run_file',		default = 'run_file.xml',	help='file with description')
+	parser.add_option('-v'			, metavar='verbose',				action='store_true', dest='verbose', 			default = True, 	help='Give this option to produce more output')
+	parser.add_option('--ve'		, metavar='event handler verbose',	action='store_true', dest='eh_verbose', 		default = False,	help='Activate verbosity on the event handler (EH)')
+	parser.add_option('--simulate'	, metavar='simulate',				action='store_true', dest='simulate',			default = False, 	help='Simulates a run without calling RPCs and without waiting')
+	parser.add_option('--del'		, metavar='delete runs',			action='store_true', dest='delete_last_runs',	default = False,  	help='When restarting an experiment delete the last three runs');
 
 	options, arguments = parser.parse_args()
-	
-	if options.experiment_description==None:
+
+	if options.experiment_description == None:
 		print 'No xml experiment description file given.'
 		exit()
 		
-	if options.simulate==None:
-		simulate=False
-	else:
-		simulate=True
-	
-	if options.verbose==None:
-		verbose=False
-	else:
-		verbose=True
-	
-	if options.eh_verbose==None:
-		eh_verbose=False
-	else:
-		eh_verbose=True
-	
+	simulate   = options.simulate
+	verbose    = options.verbose
+	eh_verbose = options.eh_verbose
 
-	#Build the xml file which contains the runs that have been already done
-	build_xml_file(options.experiment_description);
 
 	#instantiation to use only the methods
 	exp_run = experiment_description(options.experiment_description);
 	experiment_name = "%s" % exp_run.experiment_name
 	experiment_data = exp_experiment_data(experiment_name, exp_run, options.experiment_description)
 
+	#Build the xml file which contains the runs that have been already done
+	build_xml_file(exp_run,options.xml_run_file);
 
 	# forward option has been disabled as resume is done automatically now
 # 	if options.forward!=None:
@@ -1611,45 +1654,36 @@ if __name__ == '__main__':
 	############################################################
 	nodeContainer = None
 	
-
-	
 	
 	#Adjust the value attribute
+	adjust_value_attribute(options.xml_run_file)
 	
-	adjust_value_attribute();
-	
-	if(options.delete_last_runs == True):
-	#Delete last runs
-		Delete_last_runs(options.delete_last_runs);
-		print "Deleting options is enabled";
-	else:
-		print "Deleting option is disabled"
-	
+	if options.delete_last_runs:
+		delete_last_runs(options.xml_run_file)
 	
 	#Obtain the previous runs
 	tree = ET.parse('run_file.xml');
 	root = tree.getroot();
 
 
-	sort_xml_file();
+	sort_xml_file(options.xml_run_file);
 
 	
-	run_matrix_done = build_run_matrix_done(run_matrix_done);
+	run_matrix_done = build_run_matrix_done(options.xml_run_file,run_matrix_done)
 		
 
 	#Obtain the full_run_matrix
 	exp_with_new_config = experiment_description(options.experiment_description)
-	full_run_matrix = exp_with_new_config.get_run_matrix();
+	full_run_matrix = exp_with_new_config.get_run_matrix()
 	
-	new_run_matrix = build_full_run_matrix(full_run_matrix,run_matrix_done);
+	new_run_matrix = build_full_run_matrix(full_run_matrix,run_matrix_done)
 
 	
-	
+
 	if (all(x==new_run_matrix[0] for x in new_run_matrix) == True):
 		if(new_run_matrix[0] == NOP):
-			print "The experiment is complete";
-	 		exit();
-	 		
+			print "The experiment is complete"
+			exit()
 	
 		
 	
@@ -1660,23 +1694,24 @@ if __name__ == '__main__':
 	
 	if exp.sd_protocol.lower() == "zeroconf".lower():
 		exp_protocol = "avahi"
+		print "Using protocol Zeroconf"
 	elif exp.sd_protocol.lower() == "slp".lower():
 		exp_protocol = "slp"
+		print "Using protocol SLP"
 	else:
 		print "Unsupported protocol set. Change to slp or zeroconf"
 		exit()
 
-		
-	#run_experiment_new(exp,new_run_matrix); #remove
+
 
 
 	experiment_data.copy_files()
 	nodeContainer = NodeContainer(exp.get_all_spec_nodes())
-	
+
 	if verbose:
 		nodeContainer.summary()
 
-	eh = EventHandler(eh_verbose)
+	eh = EventHandler(options.eh_verbose)
 	eh.start_event_handler()
 
 	try:
@@ -1692,7 +1727,8 @@ if __name__ == '__main__':
 			can_be_names.append(can_be.name)
 		print "Getting Topology information on the nodes that can act",can_be_names
 		parallel_exec( can_be_actors, "get_topology",can_be_names)
-		run_experiment_new(exp,new_run_matrix);
+		run_experiment(exp,new_run_matrix,options.xml_run_file)
+		
 	except (KeyboardInterrupt, SystemExit):
 		print "Have to quit now..."
 		kill_threads = 1
@@ -1703,7 +1739,7 @@ if __name__ == '__main__':
 		parallel_exec(nodeContainer.all(), "experiment_exit")
 		time.sleep(10)
 		eh.stop_event_handler()
-	
+
 	print "Experiment done with all runs"
 	print "Waiting 5 seconds for all threads to abort"
 	sendmail("Experiment Complete","Experiment %s has finished." % experiment_data.get_current_experiment_dir())

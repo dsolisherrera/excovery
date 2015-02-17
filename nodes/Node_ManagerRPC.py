@@ -29,6 +29,7 @@ import Queue
 import threading
 import slp
 import _slp
+from collections import defaultdict
 
 # Restrict to a particular path.
 class RequestHandler(SimpleXMLRPCRequestHandler):
@@ -88,8 +89,8 @@ class ExpNodeManager:
 	state_dropping    = 0
 	netlink_manager   = None
 	sleep_counter     = 0
-	iperf_client_processes = []
-	iperf_client_logfiles  = []
+	iperf_client_processes = defaultdict(list)
+	iperf_client_logfiles  = defaultdict(list)
 	iperf_server_process = None
 	_saveout   = sys.stdout   
 	_saveerr   = sys.stderr
@@ -274,9 +275,20 @@ class ExpNodeManager:
 			shutil.copy2("Node_ManagerRPC.py","%s/"%self._experiment_dir)
 		except Exception, e:
 			print "Error while trying to copy script to experiment folder", e
-			
+		
+		#Set inital location for traffic generation logs
+		
+		self._env_dir = "%s/env" %(self._experiment_dir)
+		if not os.path.exists(self._env_dir):
+			try:
+				os.makedirs(self._env_dir)
+			except os.error:
+				print "Dir %s exists or cannot be created" % self._env_dir
+			os.chown(self._env_dir, self._uid, self._gid)
+		
+		
 		# Setup implementation specific variables
-		print "Initialising experiment %s" % (experiment_name)
+		print "Initializing experiment %s" % (experiment_name)
 		
 		self._cap_interface=capture_interface        
 
@@ -361,16 +373,9 @@ class ExpNodeManager:
 		#print "Checking routes ", cmd
 		p = subprocess.Popen(cmd, stdout=subprocess.PIPE)
 		self.capture_start()
-		# check routes
 		p.communicate()
 		sys.stdout.flush()
 
-		cmd = ["/bin/bash","bin/links-info.sh", "%s/%s.log" % (self._links_dir,     self._node_name)]
-		
-		p = subprocess.Popen(cmd, stdout=subprocess.PIPE)
-		# Get metrics
-		p.communicate()
-		sys.stdout.flush()
 
 		self._generate_event("run_init",self._current_run_role)
 		sys.stdout.flush()
@@ -398,6 +403,7 @@ class ExpNodeManager:
 		self.run_inited = 0
 		sys.stdout.flush()
 		return 0
+		
 	def __del__(self):
 		None
 		
@@ -527,6 +533,7 @@ class ExpNodeManager:
 		the thread running when search is active, it is reading from the browse subprocess
 		'''
 		print "SD_search_thread"
+		sys.stdout.flush()
 		ret = 0
 		if self._sdp_type.lower() == "slp":
 
@@ -588,7 +595,7 @@ class ExpNodeManager:
 		Here everything should be done to prepare a clean run
 		'''
 		print "SD_init"
-	
+		sys.stdout.flush()	
 		if self.experiment_inited == 0:
 			return -1
 		if self.sd_daemon_running == 1:
@@ -599,7 +606,7 @@ class ExpNodeManager:
 			kill_and_wait("slpd")
 			print "Killed all old SLPD-daemons!"
 			self._cleanup_service(self._sdp_type)
-			cmd = "%s/usr/sbin/slpd -l %s/etc/slpd/service/slpd-%s.log -c  %s/etc/slpd/config/slp-%s.conf" % ( self._exp_root_dir, self._exp_root_dir, self._node_name, self._exp_root_dir, self._node_name) 
+			cmd = "%s/usr/sbin/slpd -l %s/etc/slpd/services/slpd-%s.log -c  %s/etc/slpd/config/slp-%s.conf" % ( self._exp_root_dir, self._exp_root_dir, self._node_name, self._exp_root_dir, self._node_name) 
 			slp_env = os.environ
 			slp_env["LD_LIBRARY_PATH"]="%s/usr/lib" % self._exp_root_dir
 			args = shlex.split(cmd)
@@ -652,6 +659,7 @@ class ExpNodeManager:
 	
 	def SD_exit(self):
 		print "SD_exit"
+		sys.stdout.flush()
 		if self.sd_daemon_running == 0:
 			return 0
 		if self.sd_search_running == 1:
@@ -676,10 +684,13 @@ class ExpNodeManager:
 		Set and forget...
 		'''
 		print "SD_publish"
+		sys.stdout.flush()
 		if self.sd_daemon_running == 0:
+			print "Error: SD daemon not running"
 			return -1
 
 		if self.sd_publish_running ==1:
+			print "Error: SD pubilish already running"
 			return 0
 		print "publishing service"
 		##### publisher way ######
@@ -745,6 +756,7 @@ class ExpNodeManager:
 		@return array of three strings representing timestamp before and after search and the delay in ms 
 		'''
 		print "SD_start_search"
+		sys.stdout.flush()
 		if self.sd_daemon_running == 0:
 			return -1
 		if self.sd_search_running == 1:
@@ -759,6 +771,7 @@ class ExpNodeManager:
 		Stops the search
 		'''
 		print "SD_stop_search"
+		sys.stdout.flush()
 		if self.sd_daemon_running == 0:
 			return -1
 		if self.sd_search_running == 0:
@@ -913,16 +926,16 @@ class ExpNodeManager:
 # TRAFFIC GENERATOR FUNCTIONS
 #################################################################    
 	def traffic_start(self, servernode, bandwidth):
-		print "traffic_start"
+		print "traffic_start for %s" %(servernode)
 		#create new logfile 
-		n = len(self.iperf_client_processes)
-		outfile = "%s/iperf_client_%s_%d.log"%(self._env_dir,self._node_name,n)
-		self.iperf_client_logfiles.append(open(outfile,'w'))
+		n = len(self.iperf_client_logfiles[servernode])
+		outfile = "%s/iperf_client_%s_%s_%d.log"%(self._env_dir,self._node_name,servernode,n)
+		self.iperf_client_logfiles[servernode].append(open(outfile,'w'))
 		cmd = "iperf -u -t 14400 -i 5 -c %s-%s -b %dk" % (servernode,self._traffic_interface,bandwidth)
 		#cmd = "iperf -u -t 14400 -i 5 -c %s-wlan0 -b %d 1>>~/Logs/iperf/iperf_%s_c 2>&1 &" % (servernode,bandwidth,self._nodename) 
 		args = shlex.split(cmd)
 		#print "Starting traffic with: %s" % cmd
-		self.iperf_client_processes.append(subprocess.Popen(args,stdout=self.iperf_client_logfiles[n]))
+		self.iperf_client_processes[servernode].append(subprocess.Popen(args,stdout=self.iperf_client_logfiles[servernode][-1]))
 		#print "\tIperf client started"
 		self._generate_event("traffic_start", "%dk"%bandwidth)
 		return 0
@@ -930,25 +943,59 @@ class ExpNodeManager:
 	def traffic_stop_all(self):
 		print "traffic_stop_all"
 		if len(self.iperf_client_processes)>0:
-			print "stopping traffic"
+			print "stopping all traffic"
 			for i in self.iperf_client_processes:
-				if i!=None:
-					try:
-						i.kill()
-						i.wait()
-					except Error, e:
-						print "exception while killing iperf"
-					i = None
-			self.iperf_client_processes=[]
-			for i in self.iperf_client_logfiles:
-				if i!=None:
-					try:
-						i.close()
-					except:
-						pass
-			self.iperf_client_logfiles = []
-		self._generate_event("traffic_stop", "")
+				for process in self.iperf_client_processes[i]:
+					if process!=None:
+						try:
+							process.kill()
+							process.wait()
+						except:
+							print "exception while killing iperf"
+					process = None
+			self.iperf_client_processes=defaultdict(list)
+
+			for j in self.iperf_client_logfiles:
+				for log in self.iperf_client_logfiles[j]:
+					if log!=None:
+						try:
+							log.close()
+						except:
+							print "exception closing logfile of iperf for node %s" %(servernode)
+							pass
+					log = None
+			self.iperf_client_logfiles = defaultdict(list)
+		self._generate_event("traffic_stop_all", "")
 		return 0
+
+	def traffic_stop(self,servernode):
+		print "traffic_stop" 
+		if len(self.iperf_client_processes)>0:
+			
+			if servernode in self.iperf_client_processes:
+				print "stopping traffic for %s" %(servernode)
+				
+				if self.iperf_client_processes[servernode]!=[]:
+					try:
+						#Since we might have multiple instances, just eliminate the first one
+						self.iperf_client_processes[servernode][0].kill()
+						self.iperf_client_processes[servernode][0].wait()
+					except:
+						print "exception while killing iperf for node %s" %(servernode)
+				
+					try:
+						self.iperf_client_logfiles[servernode][0].close()
+					except:
+						print "exception closing logfile of iperf for node %s" %(servernode)
+						pass
+		self._generate_event("traffic_stop", "%s"%servernode)
+		return 0
+
+	
+	def traffic_update(self, servernode, bandwidth):
+		self.traffic_stop(servernode)
+		self.traffic_start(servernode, bandwidth)
+		
 ################################################################
 # FAULT INJECTION & NETWORK MANAGEMENT
 ################################################################
@@ -1011,6 +1058,8 @@ class ExpNodeManager:
 		# Get metrics
 		p.communicate()
 		sys.stdout.flush()
+		p.wait()
+		self._generate_event("getting_olsr", "")
 		return 0
 
 #################################################################

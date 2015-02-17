@@ -197,6 +197,7 @@ class exp_action:
 					"fault_start_interface_fail",
 					"fault_stop_interface_fail",
 					"env_traffic_start", "env_traffic_stop",
+					"env_traffic_update",
 					"fault_start_drop_sd","fault_stop_drop_sd",
 					"get_olsr",
 					"event_flag","env_start_drop_sd", "env_stop_drop_sd"]
@@ -337,7 +338,41 @@ class exp_env_process:
 		print "\t number of env_actions = %d" % (len(self.action_list))
 		for i in self.action_list:
 			i.summary()
+
+class exp_global_process:
+	'''
+	This class represents the global process, which
+	does manipulations that are constant along all the experiment
+	runs
+	'''
+	
+	def __init__(self, XMLenv_process):
+		'''
+		This function reads the DOM element global_process and
+		creates a local representation for it
+		'''
+		self.description = XMLenv_process.getElementsByTagName("description")[0].firstChild.data
+		self.action_list = []
 		
+		# build abstract actors
+		actions = XMLenv_process.getElementsByTagName("global_actions")
+		for action in actions[0].childNodes:
+			if action.nodeType == Node.TEXT_NODE:
+				continue
+			try:
+				exp_act = exp_action(action)
+			except Exception:
+				print "Error in action definition (%s)" % action.nodeName
+				raise
+			self.action_list.append(exp_act)
+			
+	def summary(self):
+		print "global process (actor)"
+		print "\t description: %s" %(self.description)
+		print "\t number of global_actions = %d" % (len(self.action_list))
+		for i in self.action_list:
+			i.summary()
+	
 	
 class exp_node_processes:
 	''' 
@@ -553,6 +588,11 @@ class experiment_description:
 		#env process
 		xml_env_process = tree.getElementsByTagName("env_process")
 		self.env_process = exp_env_process(xml_env_process[0])
+		
+		#global process
+		xml_global_process = tree.getElementsByTagName("global_process")
+		if xml_global_process != []:
+			self.global_process = exp_global_process(xml_global_process[0])
 		
 		#factors
 		for factor in tree.getElementsByTagName("factor"):

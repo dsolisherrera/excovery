@@ -463,6 +463,7 @@ class fig_placeHolders:
 		self._axs  = defaultdict(dict)
 		params = {'legend.fontsize': 9,
           'legend.linewidth': 2,
+          'lines.linewidth': 2.0,
           'xlabel.fontsize':'x-large',
           'ylabel.fontsize':'x-large',
           'grid.linewidth': 0.2,

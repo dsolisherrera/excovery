@@ -48,7 +48,6 @@ class eventsRPC:
             print "EH: got event %s at %s from %s " % (type,timestamp,node)
         self._event_condition.acquire()
         try:
-            #self._event_log.append( ( datetime.datetime.now(), node, timestamp, type, param ) )
             self._event_log.append( ( datetime.now(), node, timestamp, type, param ) )
         except:
             print "EH:ERROR"
@@ -66,16 +65,14 @@ class StoppableRPCServer(SimpleXMLRPCServer):
         SimpleXMLRPCServer.__init__(self, *args, **kw)
         self.register_function(lambda: 'OK', 'ping')
         self.is_finally_done = 0
+        
     def serve_forever(self):
         while not self.stopped:
             try:
                 self.handle_request()
             except Exception, e:
                 print "Exception: ",e
-#        try:
-#            self.handle_request()
-#        except:
-#            pass
+
         print "EH: Done"
         self.is_finally_done = 1
 
@@ -107,9 +104,9 @@ class EventHandler:
         pass    
         
     def inject_event(self, node, timestamp, type, param):
-        print "EH: injecting event"
+        print "EH: injecting event %s" %(type)
         self.events._inject_event(node, timestamp, type, param)
-        print "EH: injecting event done"
+        print "EH: injection of event done"
         
     def event_thread(self):
         print "EH: Start"
