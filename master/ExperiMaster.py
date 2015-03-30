@@ -463,8 +463,8 @@ def do_traffic_thread(queue, command, node, target, bw):
 		if command=="update":
 			r = node.traffic_update(target,bw)
 		if command=="stop":
-			#r = node.traffic_stop_all()
 			r = node.traffic_stop(target)
+            #r = node.traffic_stop_all()
 			
 	except socket.error:
 		print "Socket error while trying to exec %s on node %s" %(command, str(node))
@@ -496,6 +496,8 @@ class exp_env_thread(threading.Thread):
 		self.exp_wait_marker_time = 0
 		self.rand = random.Random()
 		self.load_pairs = load_pairs
+		if (load_pairs == []):
+		    print "ENV_Thread: the load pairs is empty."
 		self.env_input_queue = env_input_queue
 		self.env_output_queue = env_output_queue
 		self.bw_changed = bw_changed
@@ -560,8 +562,6 @@ class exp_env_thread(threading.Thread):
 			bw = 0
 			random_pairs = 0
 			random_switch_amount = 0
-			removed_pairs = []
-			added_pairs = []
 			for (name, exp_param) in exp_action.parameter_list.items():
 				if name=="random_pairs":
 					if exp_param.type=="fix":
@@ -590,15 +590,21 @@ class exp_env_thread(threading.Thread):
 						bw = exp.get_current_factor_value_by_id(exp_param.data)
 
 			# get pseudo randomly assigned pairs
-			print "%s: getting %d pairs, bw=%d" % (s,random_pairs,bw)
+			
 			if random_pairs==0:
 				return
 			if (command=="start"):
+				print "%s: getting %d pairs, bw=%d" % (s,random_pairs,bw)
 				if random_seed==None:
 					self.load_pairs = nodeContainer.get_random_env_pairs(random_pairs)
 				else:
 					self.load_pairs = nodeContainer.get_random_env_pairs(random_pairs, random_seed)
-					
+			else:
+				print "%s: using %d pairs, bw=%d" % (s,len(self.load_pairs),bw)
+            
+			removed_pairs = []
+			added_pairs = []
+            
 			if random_switch_amount>0:
 				if random_switch_seed!=None:
 					self.rand.seed(random_switch_seed)
@@ -634,6 +640,7 @@ class exp_env_thread(threading.Thread):
 				tmp_targets.append(pair[0].name)
 
 			if command == "start":
+				print "%s: executing parallel_traffic after recieved command start" %s
 				self.parallel_traffic("start",tmp_nodes,tmp_targets,bw)
 				
 			else:
@@ -661,12 +668,17 @@ class exp_env_thread(threading.Thread):
                         
 						stop_nodes.append(pair[1])
 						stop_targets.append(pair[0].name)
+                        
+					print "%s: Stop_nodes " + str(stop_nodes)
+					print "%s: Stop_targets " + str(stop_targets)
+                    
 					for pair in added_pairs:
 						start_nodes.append(pair[0])
 						start_targets.append(pair[1].name)
                         
 						start_nodes.append(pair[1])
 						start_targets.append(pair[0].name)
+                        
 					self.parallel_traffic("stop",stop_nodes,stop_targets,bw)
 					self.parallel_traffic("start",start_nodes,start_targets,bw)
 					
@@ -936,7 +948,7 @@ def delete_last_runs(xml_run_file):
 			curr_run = int(run_done.get('value'))
 			run_matrix_value = int(run_done.get('run_matrix_value'));
 
-			if(curr_run > max_run - 20):
+			if(curr_run > max_run - 10):
 				
 				#delete this run the xml file
 				root.remove(run_done);

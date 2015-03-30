@@ -447,12 +447,12 @@ class ExpNodeManager:
 				if os.path.exists(file):
 					os.remove(file)
 		else:
-			logfile = "%s/etc/slpd/service/slp-%s.log" % (self._exp_root_dir, self._node_name) 
+			logfile = "%s/etc/slpd/services/slp-%s.log" % (self._exp_root_dir, self._node_name) 
 			if os.path.exists(logfile):
 					os.remove(logfile)
 
-	def _configure_service(self, type):
-		if type=="avahi":
+	def _configure_service(self, stype):
+		if stype=="avahi":
 			self._service_type="_test._udp"
 			self._service_port="12345"
 			self._service_file_dir="%s/etc/avahi/services" %(self._exp_root_dir)
@@ -460,9 +460,12 @@ class ExpNodeManager:
 			self._service_name="svc-%s" % self._node_name
 	 #   if type=="slpd":
 		else:
-			self._service_slp_url = "service:test2://10.0.0.1/testing/%s" % self._node_name
+			name = "_".join(self._current_run_name.split('_')[-2:])
+			#self._service_slp_url = "service:test_%s://10.0.0.1/testing/%s" %(name,self._node_name)
+			self._service_slp_url = "service:test2://10.0.0.1/testing/%s" %(self._node_name)
 		#	self._service_slp_url = "service:_test._udp://%s" % self._node_ip
-			self._service_slp_attrs = { 'nodeId': '%s' % self._node_name} 
+			self._service_slp_attrs = { 'nodeId': '%s' %(self._node_name)} 
+			#self._service_type="service:test_%s" %(name)
 			self._service_type="service:test2"
 		   # self._service_port="12345"
 		   # self._service_file_dir="%s/etc/slp/services" %(self._exp_root_dir) # !!!check this
@@ -699,7 +702,7 @@ class ExpNodeManager:
 		#self._publish_process[ID] = subprocess.Popen(args)
 		###########################
 		##### service file way
-		if self._sdp_type.lower() == "slp":     
+		if self._sdp_type.lower() == "slp":
 			self.slph.register(self._service_slp_url, 65535, self._service_slp_attrs) 
 		else:
 			filename="%s/service%s" % (self._service_file_dir, self._service_file_post)
@@ -1006,6 +1009,7 @@ class ExpNodeManager:
 		print "fail_start_drop_sd"
 		if self.state_dropping==1:
 			return 0
+		#Port comes from OLSR BMF plugin that encapsulates IP packets to keep forwarder address
 		port = "50698"
 		args = shlex.split("sudo iptables -I INPUT -p udp --dport 50698 -j DROP" )
 		p0=subprocess.Popen(args)
@@ -1014,6 +1018,16 @@ class ExpNodeManager:
 		p1=subprocess.Popen(args)
 		p1.wait()
 		args = shlex.split("sudo iptables -I FORWARD -p udp --dport 50698 -j DROP" )
+		p2=subprocess.Popen(args)
+		p2.wait()
+		# Drop also srvloc port 427 for SLP experiments
+		args = shlex.split("sudo iptables -I INPUT -p udp --dport 427 --sport 427 -j DROP" )
+		p0=subprocess.Popen(args)
+		p0.wait()
+		args = shlex.split("sudo iptables -I OUTPUT -p udp --dport 427 --sport 427 -j DROP" )
+		p1=subprocess.Popen(args)
+		p1.wait()
+		args = shlex.split("sudo iptables -I FORWARD -p udp --dport 427 --sport 427 -j DROP" )
 		p2=subprocess.Popen(args)
 		p2.wait()
 		self.state_dropping = 1
@@ -1034,6 +1048,15 @@ class ExpNodeManager:
 		p1=subprocess.Popen(args)
 		p1.wait()
 		args = shlex.split("sudo iptables -D FORWARD -p udp --dport 50698 -j DROP" )
+		p2=subprocess.Popen(args)        
+		p2.wait()
+		args = shlex.split("sudo iptables -D INPUT -p udp --dport 427 --sport 427 -j DROP" )
+		p0=subprocess.Popen(args)
+		p0.wait()
+		args = shlex.split("sudo iptables -D OUTPUT -p udp --dport 427 --sport 427 -j DROP" )
+		p1=subprocess.Popen(args)
+		p1.wait()
+		args = shlex.split("sudo iptables -D FORWARD -p udp --dport 427 --sport 427 -j DROP" )
 		p2=subprocess.Popen(args)        
 		p2.wait()
 		self.state_dropping = 0
